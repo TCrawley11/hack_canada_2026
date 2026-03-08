@@ -1,36 +1,43 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
-const SCARE_OPTIONS = [
-  { id: 'dog-bark', label: 'Dog Bark', file: '/sounds/dog-bark.mp3' },
-  { id: 'hawk-screech', label: 'Hawk Screech', file: '/sounds/hawk-screech.mp3' },
-  { id: 'loud-alarm', label: 'Loud Alarm', file: '/sounds/loud-alarm.mp3' },
-  { id: 'human-warning', label: 'Human Warning Voice', file: '/sounds/human-warning.mp3' },
-  { id: 'random', label: 'Random Deterrent', file: null },
-]
+const API_URL = 'http://localhost:8000'
 
 export default function ScareControls() {
   const [isOpen, setIsOpen] = useState(false)
   const [lastPlayed, setLastPlayed] = useState(null)
+  const [sounds, setSounds] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  const playSound = (option) => {
-    let soundToPlay = option
+  // Fetch available sounds from backend
+  useEffect(() => {
+    fetch(`${API_URL}/sounds`)
+      .then(res => res.json())
+      .then(data => setSounds(data.sounds || []))
+      .catch(err => console.warn('Failed to fetch sounds:', err))
+  }, [])
 
-    if (option.id === 'random') {
-      const nonRandomOptions = SCARE_OPTIONS.filter(o => o.id !== 'random')
-      soundToPlay = nonRandomOptions[Math.floor(Math.random() * nonRandomOptions.length)]
+  const playSound = async (soundName) => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/play/sound/${soundName}`, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        setLastPlayed(soundName)
+        setTimeout(() => setLastPlayed(null), 2000)
+      } else {
+        console.warn('Sound not played:', data.reason)
+      }
+    } catch (err) {
+      console.warn('Failed to play sound:', err)
     }
-
-    if (soundToPlay.file) {
-      const audio = new Audio(soundToPlay.file)
-      audio.play().catch(err => {
-        console.warn('Audio playback failed:', err)
-      })
-    }
-
-    setLastPlayed(soundToPlay.label)
+    setLoading(false)
     setIsOpen(false)
+  }
 
-    setTimeout(() => setLastPlayed(null), 2000)
+  const playRandom = async () => {
+    if (sounds.length === 0) return
+    const randomSound = sounds[Math.floor(Math.random() * sounds.length)]
+    await playSound(randomSound)
   }
 
   return (
@@ -62,16 +69,29 @@ export default function ScareControls() {
 
       {isOpen && (
         <div 
-          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 overflow-hidden z-50"
+          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 overflow-hidden z-50 max-h-80 overflow-y-auto"
           style={{
             backgroundColor: 'var(--panel_bg)',
             borderRadius: '8px'
           }}
         >
-          {SCARE_OPTIONS.map((option, idx) => (
+          <button
+            onClick={playRandom}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer"
+            style={{
+              color: 'var(--light)',
+              backgroundColor: 'transparent',
+              borderBottom: '1px solid rgba(255,255,255,0.1)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--panel_bg_hover)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <span className="text-sm">Random Sound</span>
+          </button>
+          {sounds.map((sound) => (
             <button
-              key={option.id}
-              onClick={() => playSound(option)}
+              key={sound}
+              onClick={() => playSound(sound)}
               className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer"
               style={{
                 color: 'var(--light)',
@@ -80,7 +100,7 @@ export default function ScareControls() {
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--panel_bg_hover)'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              <span className="text-sm">{option.label}</span>
+              <span className="text-sm">{sound}</span>
             </button>
           ))}
         </div>

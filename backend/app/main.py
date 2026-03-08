@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from .deterrent import trigger_deterrent, SCRIPTS
+from .deterrent import trigger_deterrent, SCRIPTS, play_sound_manual, play_tts_manual, get_available_sounds
 from .incidents import log_incident, get_incidents
 from .threats import record_threat, get_threat_summary
 
@@ -131,3 +131,27 @@ def threat_summary():
 def supported_species():
     """Return the list of species the deterrent system knows about."""
     return {"species": list(SCRIPTS.keys())}
+
+
+@app.get("/sounds")
+def available_sounds():
+    """Return list of available sound effects for the soundboard."""
+    return {"sounds": get_available_sounds()}
+
+
+@app.post("/play/sound/{sound_name}")
+def play_sound(sound_name: str):
+    """Play a specific sound effect by name."""
+    result = play_sound_manual(sound_name)
+    if result is None:
+        return {"success": False, "reason": "audio playing or sound not found"}
+    return {"success": True, "played": result}
+
+
+@app.post("/play/tts")
+def play_tts(text: str):
+    """Play TTS for custom text."""
+    result = play_tts_manual(text)
+    if result is None:
+        return {"success": False, "reason": "audio already playing"}
+    return {"success": True, "played": result}

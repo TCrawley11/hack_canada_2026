@@ -18,29 +18,23 @@ SCRIPTS: dict[str, list[str]] = {
         "Fly back the way you came darn chopped crows!"
     ],
     "deer": [
-        "Hey deer! Get out of the crops! Go back to the forest where you belong!",
-        "Shoo deer! Away from the farm! Move it! Get going!",
         "Get out of here deer! You are destroying the harvest! Leave now!",
+        "Hey deer! Get away from the crops! Go back to the forest where you belong!",
     ],
     "rat": [
-        "Hey rats! Get out of the fucking crops! Go back to the sewers where you belong!",
-        "Go back into the sewers you filthy rats! This is not your land! Leave immediately!",
+        "Hey rats! Get away from the fucking crops! Go back to the sewers where you belong!",
         "Go back to the mutant turtles, Master Splinter",
-        "Run away with your tail behind your back NOW!"
     ],
     "raccoon": [
         "Raccoon! Get your grubby paws off the crops! Scram!",
         "Hey you sneaky raccoon! Out! Out! Out! Get off this property!",
     ],
     "goose": [
-        "Goose! Get off the farm! Go find a pond somewhere else! Shoo!",
-        "Hey goose! Nobody wants you here! Get moving! Go away!",
-        "Get out of here you honking goose! Leave the farm alone! Scram!",
+        "Goose! You are not wanted, even in Waterloo. Go find a pond somewhere else! Shoo!",
     ],
 
     "coyote": [
         "Coyote! You mangy, flea-ridden waste of fur! Get off this farm before I make you into a hat!",
-        "Hey scrawny! Yeah you, the one that looks like a wet dog had a baby with a trash can! SCRAM!",
         "Oh hell nah, it's wily coyote! Get your bony behind off my property RIGHT NOW!",
         "You call yourself a predator?! You look like you lost a fight with a lawn mower! GET OUT!",
         "Coyote!, Your howling is pathetic and so are you! Nobody is impressed! LEAVE!"
@@ -53,7 +47,6 @@ SCRIPTS: dict[str, list[str]] = {
     ],
 
     "human": [
-        "Hey you! Yes, you! Get off this farm! This is private property! Go away!",
         "Human! get the fuck out of here! I'm calling 911",
         "Hey there foolish one, you are being recorded now. This is being sent to the POLICE!",
         "Why the hell are you on this farm child! Up to something sussy are we...? Just leave and I won't tell anyone",
@@ -61,9 +54,9 @@ SCRIPTS: dict[str, list[str]] = {
 }
 
 DEFAULT_SCRIPTS = [
-    "Get off this farm right now! You are not welcome here! Go away!",
-    "Shoo! Get away! Leave this farm immediately! Get out!",
-    "Hey! Get out of here! This is private property! Scram!",
+    "Listen here you little troublemaker, I've got a shotgun and zero patience! SCRAM!",
+    "Get your freeloading behind off my property before I lose my mind!",
+    "The voices inside my head are getting louder... hehehe...",
 ]
 
 # Resolve sounds directory relative to this file (backend/sounds/)
@@ -197,3 +190,57 @@ def trigger_deterrent(species: str) -> str | None:
     thread.start()
 
     return script
+
+
+def play_sound_manual(sound_name: str) -> str | None:
+    """
+    Play a specific sound file by name (without path/extension).
+    Returns the sound name if played, None if audio is already playing.
+    """
+    global _audio_playing
+    with _audio_lock:
+        if _audio_playing:
+            return None
+    
+    # Find the sound file
+    for filename in os.listdir(_SOUNDS_DIR):
+        name_without_ext = os.path.splitext(filename)[0]
+        if name_without_ext.lower() == sound_name.lower():
+            path = os.path.join(_SOUNDS_DIR, filename)
+            thread = threading.Thread(target=play_sound_file_background, args=(path,), daemon=True)
+            thread.start()
+            return sound_name
+    return None
+
+
+def play_tts_manual(text: str) -> str | None:
+    """
+    Play TTS for custom text.
+    Returns the text if played, None if audio is already playing.
+    """
+    global _audio_playing
+    with _audio_lock:
+        if _audio_playing:
+            return None
+    
+    tts_client = get_client()
+    audio_generator = tts_client.text_to_speech.convert(
+        voice_id=VOICE_ID,
+        text=text,
+        model_id="eleven_turbo_v2_5",
+    )
+    audio_bytes = b"".join(audio_generator)
+    
+    thread = threading.Thread(target=play_audio_background, args=(audio_bytes,), daemon=True)
+    thread.start()
+    return text
+
+
+def get_available_sounds() -> list[str]:
+    """Return list of available sound file names (without extension)."""
+    sounds = []
+    if os.path.exists(_SOUNDS_DIR):
+        for filename in os.listdir(_SOUNDS_DIR):
+            if filename.endswith(('.mp3', '.wav', '.ogg')):
+                sounds.append(os.path.splitext(filename)[0])
+    return sounds

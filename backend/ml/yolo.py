@@ -38,7 +38,7 @@ COCO_NAMES = {0: "person", 14: "bird", 15: "cat", 16: "dog", 21: "bear"}
 YOLO_CONF_THRESHOLD = 0.25
 GEMINI_CONF_THRESHOLD = 0.6
 COOLDOWN_SECONDS = 15
-SAMPLE_EVERY_N_FRAMES = 15   # run YOLO every N frames (~2 fps at 30 fps)
+SAMPLE_EVERY_N_FRAMES = 30   # run YOLO every N frames (~2 fps at 30 fps)
 
 GEMINI_PROMPT = (
     "What animal or person is this? If it is a predatory or farm-threatening animal or human "
@@ -64,6 +64,13 @@ _latest_annotated: bytes = b""
 
 _gemini_lock = threading.Lock()
 _gemini_results: dict[int, dict] = {}  # cls_id → last Gemini result
+_gemini_pending: set[int] = set()  # cls_ids with pending Gemini calls
+_gemini_last_call: dict[int, float] = {}  # cls_id → last call timestamp
+GEMINI_CALL_COOLDOWN = 5.0  # seconds between Gemini calls for same class
+
+# Global rate limiting for Gemini
+_gemini_global_last_call: float = 0.0
+GEMINI_GLOBAL_MIN_INTERVAL = 4.0  # minimum seconds between ANY Gemini call
 
 _cooldown_lock = threading.Lock()
 _cooldowns: dict[str, float] = {}
@@ -204,29 +211,38 @@ def classify_with_gemini(crop, client) -> dict:
 
 def _gemini_worker(crop, cls_id, gemini_client, ws) -> None:
     """Background thread: classify crop, update label store, send alert if needed."""
-    result = classify_with_gemini(crop, gemini_client)
-    result["timestamp"] = datetime.now().strftime("%H:%M:%S")
+    try:
+        result = classify_with_gemini(crop, gemini_client)
+        result["timestamp"] = datetime.now().strftime("%H:%M:%S")
 
-    with _gemini_lock:
-        _gemini_results[cls_id] = result
+        with _gemini_lock:
+            _gemini_results[cls_id] = result
 
-    species = result["species"]
-    threatening = result["threatening"]
-    confidence = result["confidence"]
+        species = result["species"]
+        threatening = result["threatening"]
+        confidence = result["confidence"]
 
-    print(f"[Gemini] species={species}  threatening={threatening}  confidence={confidence:.2f}")
+        print(f"[Gemini] species={species}  threatening={threatening}  confidence={confidence:.2f}")
+        
+        # Log when a target is confirmed with species name
+        if species != "unknown" and confidence >= GEMINI_CONF_THRESHOLD:
+            print(f"[CONFIRMED] {species.upper()} detected with {confidence:.0%} confidence")
 
-    if not threatening or confidence < GEMINI_CONF_THRESHOLD:
-        return
-
-    with _cooldown_lock:
-        last = _cooldowns.get(species, 0.0)
-        if (time.time() - last) < COOLDOWN_SECONDS:
-            print(f"[Cooldown] Skipping {species}")
+        if not threatening or confidence < GEMINI_CONF_THRESHOLD:
             return
-        _cooldowns[species] = time.time()
 
-    _send_detection(ws, species, confidence, result["timestamp"])
+        with _cooldown_lock:
+            last = _cooldowns.get(species, 0.0)
+            if (time.time() - last) < COOLDOWN_SECONDS:
+                print(f"[Cooldown] Skipping {species}")
+                return
+            _cooldowns[species] = time.time()
+
+        _send_detection(ws, species, confidence, result["timestamp"])
+    finally:
+        # Mark this class as no longer pending
+        with _gemini_lock:
+            _gemini_pending.discard(cls_id)
 
 
 # ---------------------------------------------------------------------------
@@ -260,14 +276,53 @@ def _push_frame(frame, detections: list[tuple]) -> None:
         _latest_annotated = jpeg
 
 
+def _should_call_gemini(cls_id: int) -> bool:
+    """Check if we should call Gemini for this class."""
+    global _gemini_global_last_call
+    
+    now = time.time()
+    
+    with _gemini_lock:
+        # Skip if already pending
+        if cls_id in _gemini_pending:
+            return False
+        # Skip if called recently (per-class cooldown)
+        last_call = _gemini_last_call.get(cls_id, 0.0)
+        if (now - last_call) < GEMINI_CALL_COOLDOWN:
+            return False
+        # Skip if global rate limit not met
+        if (now - _gemini_global_last_call) < GEMINI_GLOBAL_MIN_INTERVAL:
+            return False
+        return True
+
+
 def _run_yolo_and_gemini(frame, yolo: YOLO, gemini_client, ws) -> list[tuple]:
     """Run YOLO, kick off Gemini threads for each detection, return detections."""
+    global _gemini_global_last_call
+    
     detections = detect_targets(frame, yolo)
     if detections:
         print(f"[YOLO] {len(detections)} target(s) found")
     for (crop, cls_id, *_) in detections:
+        # Skip if not a known YOLO class
         if cls_id not in COCO_NAMES:
             continue
+        
+        # Get the YOLO class name
+        yolo_class = COCO_NAMES[cls_id]
+        
+        # Only call Gemini for person, bird, cat, dog, bear (not unknown)
+        if yolo_class == "unknown":
+            continue
+            
+        # Only call Gemini if not already pending and not recently called
+        if not _should_call_gemini(cls_id):
+            continue
+        # Mark as pending and record call time
+        with _gemini_lock:
+            _gemini_pending.add(cls_id)
+            _gemini_last_call[cls_id] = time.time()
+            _gemini_global_last_call = time.time()
         threading.Thread(
             target=_gemini_worker,
             args=(crop, cls_id, gemini_client, ws),
