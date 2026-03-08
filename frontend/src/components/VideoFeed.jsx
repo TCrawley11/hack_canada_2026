@@ -37,9 +37,7 @@ export default function VideoFeed() {
       className="relative w-full h-full overflow-hidden"
       style={{
         backgroundColor: 'var(--panel_bg)',
-        border: '2px solid var(--panel_border)',
-        borderRadius: '8px',
-        boxShadow: '0 4px 12px var(--dark_50)'
+        borderRadius: '8px'
       }}
     >
       <div className="absolute inset-0">
@@ -55,7 +53,7 @@ export default function VideoFeed() {
           <div 
             className="w-8 h-8 rounded-full animate-spin"
             style={{
-              border: '2px solid var(--panel_border)',
+              border: '2px solid var(--dark_30)',
               borderTopColor: 'var(--light)'
             }}
           />

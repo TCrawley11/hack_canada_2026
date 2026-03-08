@@ -31,9 +31,7 @@ function App() {
         <label className="flex items-center gap-2 text-sm cursor-pointer px-4 py-2 font-medium" style={{ 
           color: 'var(--light)',
           backgroundColor: 'var(--panel_bg)',
-          border: '2px solid var(--panel_border)',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px var(--dark_50)'
+          borderRadius: '8px'
         }}>
           <input
             type="checkbox"
@@ -53,15 +51,14 @@ function App() {
           style={{ 
             maxHeight: '70vh',
             height: '70vh',
-            padding: '1rem',
-            borderBottom: '2px solid var(--panel_border)'
+            padding: '1rem 1rem 0.5rem 1rem'
           }}
         >
           <VideoFeed />
         </section>
 
         {/* Detection Log - Takes remaining space */}
-        <section className="flex-1 overflow-hidden p-4">
+        <section className="flex-1 overflow-hidden px-4 py-2">
           <DetectionLog events={events} />
         </section>
       </main>

@@ -4,7 +4,6 @@ export default function DetectionLog({ events }) {
       className="h-full flex flex-col"
       style={{
         backgroundColor: 'var(--panel_bg)',
-        border: '2px solid var(--panel_border)',
         borderRadius: '8px',
         padding: '1rem'
       }}
@@ -22,7 +21,6 @@ export default function DetectionLog({ events }) {
               className="flex items-center gap-3 p-3 text-sm animate-slide-in"
               style={{ 
                 backgroundColor: 'var(--dark_10)',
-                border: '1px solid var(--panel_border)',
                 borderRadius: '6px',
                 animationDelay: `${index * 50}ms`
               }}

@@ -37,13 +37,11 @@ export default function ScareControls() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 px-4 py-2 font-medium text-sm transition-all duration-200"
+        className="flex items-center gap-3 px-4 py-2 font-medium text-sm transition-all duration-200 cursor-pointer"
         style={{
           backgroundColor: 'var(--panel_bg)',
           color: 'var(--light)',
-          border: '2px solid var(--panel_border)',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px var(--dark_50)'
+          borderRadius: '8px'
         }}
         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--panel_bg_hover)'}
         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--panel_bg)'}
@@ -67,19 +65,16 @@ export default function ScareControls() {
           className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 overflow-hidden z-50"
           style={{
             backgroundColor: 'var(--panel_bg)',
-            border: '2px solid var(--panel_border)',
-            borderRadius: '8px',
-            boxShadow: '0 4px 12px var(--dark_50)'
+            borderRadius: '8px'
           }}
         >
           {SCARE_OPTIONS.map((option, idx) => (
             <button
               key={option.id}
               onClick={() => playSound(option)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors cursor-pointer"
               style={{
                 color: 'var(--light)',
-                borderBottom: idx < SCARE_OPTIONS.length - 1 ? '1px solid var(--panel_border)' : 'none',
                 backgroundColor: 'transparent'
               }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--panel_bg_hover)'}
@@ -96,7 +91,6 @@ export default function ScareControls() {
           className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-4 py-2 text-sm animate-slide-in"
           style={{
             backgroundColor: 'var(--panel_bg)',
-            border: '2px solid var(--status_safe)',
             borderRadius: '8px',
             color: 'var(--status_safe)'
           }}
