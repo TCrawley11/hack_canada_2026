@@ -1,5 +1,7 @@
 # AI Scarecrow
 
+![Scarecrow Preview](https://github.com/TCrawley11/hack_canada_2026/blob/main/frontend/public/scarecrow%20preview.gif?raw=true)
+
 **An adaptive AI scarecrow that detects predators and intruders and dynamically scares them away to protect livestock.**
 
 ## Why This Matters
