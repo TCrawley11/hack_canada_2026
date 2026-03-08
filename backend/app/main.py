@@ -7,13 +7,14 @@ load_dotenv()
 
 from .deterrent import trigger_deterrent, SCRIPTS
 from .incidents import log_incident, get_incidents
+from .threats import record_threat, get_threat_summary
 
 app = FastAPI(title="FarmGuardian")
 
 
 @app.get("/")
 def read_root():
-    return {"message": "FarmGuardian API is running"}
+    return {"message": "SOY SCARECROW API is running"}
 
 
 @app.websocket("/ws/detection")
@@ -48,6 +49,7 @@ async def ws_detection(websocket: WebSocket):
                 continue
 
             incident = log_incident(species=species, script=script)
+            record_threat(species)
             await websocket.send_json({
                 "triggered": True,
                 "species": species,
@@ -63,6 +65,12 @@ async def ws_detection(websocket: WebSocket):
 def incidents():
     """Return the last 20 detection incidents."""
     return get_incidents()
+
+
+@app.get("/threats")
+def threat_summary():
+    """Return all detected threat species sorted by frequency."""
+    return get_threat_summary()
 
 
 @app.get("/species")
