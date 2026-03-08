@@ -73,11 +73,11 @@ def _sound(filename: str) -> str:
 
 # Predator sound effects per species mapped to actual files in backend/sounds/
 PREDATOR_SOUNDS: dict[str, list[str]] = {
-    "crow":    [_sound("owl.mp3"), _sound("lion1.mp3")],
-    "deer":    [_sound("howling.mp3"), _sound("lion2.mp3")],
-    "rat":     [_sound("owl.mp3"), _sound("lion3.mp3")],
-    "raccoon": [_sound("howling.mp3"), _sound("lion1.mp3")],
-    "goose":   [_sound("lion2.mp3"), _sound("howling.mp3")],
+    "crow":    [_sound("owl.mp3")],
+    "deer":    [_sound("howling.mp3"), _sound("help_me.mp3")],
+    "rat":     [_sound("owl.mp3")],
+    "raccoon": [_sound("howling.mp3")],
+    "goose":   [_sound("howling.mp3")],
     "coyote":  [_sound("lion1.mp3"), _sound("lion2.mp3"), _sound("lion3.mp3")],
     "human":   [_sound("hell_nah.mp3"), _sound("help_me.mp3")],
 }
@@ -161,7 +161,7 @@ def trigger_deterrent(species: str) -> str | None:
 
     script = _draw_script(species_key)
     tts_client = get_client()
-    
+
     audio_generator = tts_client.text_to_speech.convert(
         voice_id=VOICE_ID,
         text=script,
