@@ -31,7 +31,6 @@ SCRIPTS: dict[str, list[str]] = {
     "raccoon": [
         "Raccoon! Get your grubby paws off the crops! Scram!",
         "Hey you sneaky raccoon! Out! Out! Out! Get off this property!",
-        "You built like thief boy with your robber ahh. Scram!",
     ],
     "goose": [
         "Goose! Get off the farm! Go find a pond somewhere else! Shoo!",
@@ -58,9 +57,6 @@ SCRIPTS: dict[str, list[str]] = {
         "Human! get the fuck out of here! I'm calling 911",
         "Hey there foolish one, you are being recorded now. This is being sent to the POLICE!",
         "Why the hell are you on this farm child! Up to something sussy are we...? Just leave and I won't tell anyone",
-        "Leave sussy baka! Or I'm calling Onii-chan!",
-        "I have the power of god and anime on my side, get out of here before I activate!",
-        "I'm calling the Big Yahu on you if you don't leave ASAP!",
     ],
 }
 
