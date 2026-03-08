@@ -26,6 +26,7 @@ SCRIPTS: dict[str, list[str]] = {
         "Hey rats! Get out of the fucking crops! Go back to the sewers where you belong!",
         "Go back into the sewers you filthy rats! This is not your land! Leave immediately!",
         "Go back to the mutant turtles, Master Splinter",
+        "Run away with your tail behind your back NOW!"
     ],
     "raccoon": [
         "Raccoon! Get your grubby paws off the crops! Scram!",
@@ -49,13 +50,17 @@ SCRIPTS: dict[str, list[str]] = {
     "bear": [
         "Get out of here winnie the pooh!",
         "There ain't no honey for you here little bear. LEAVE!",
-        "Boy there ain't no salmon for you."
+        "Boy there ain't no salmon for you. "
     ],
 
     "human": [
         "Hey you! Yes, you! Get off this farm! This is private property! Go away!",
         "Human! get the fuck out of here! I'm calling 911",
         "Hey there foolish one, you are being recorded now. This is being sent to the POLICE!",
+        "Why the hell are you on this farm child! Up to something sussy are we...? Just leave and I won't tell anyone",
+        "Leave sussy baka! Or I'm calling Onii-chan!",
+        "I have the power of god and anime on my side, get out of here before I activate!",
+        "I'm calling the Big Yahu on you if you don't leave ASAP!",
     ],
 }
 
