@@ -37,6 +37,16 @@ SCRIPTS: dict[str, list[str]] = {
         "Hey goose! Nobody wants you here! Get moving! Go away!",
         "Get out of here you honking goose! Leave the farm alone! Scram!",
     ],
+
+    "coyote": [
+        "Coyote! You mangy, flea-ridden waste of fur! Get off this farm before I make you into a hat!",
+        "Hey scrawny! Yeah you, the one that looks like a wet dog had a baby with a trash can! SCRAM!",
+        "Get lost coyote! You couldn't catch a cold, let alone my chickens! Get out of here!",
+        "Oh look, it's the ugliest thing on four legs! Get your bony behind off my property RIGHT NOW!",
+        "Coyote! Your howling is pathetic and so are you! Nobody is impressed! LEAVE!",
+        "You call yourself a predator?! You look like you lost a fight with a lawn mower! GET OUT!",
+        "Hey mangy! The roadrunner called, he said even HE doesn't want to be caught by something as embarrassing as you! GO AWAY!",
+    ],
 }
 
 DEFAULT_SCRIPTS = [
@@ -102,7 +112,7 @@ def trigger_deterrent(species: str) -> str | None:
     audio_generator = client.text_to_speech.convert(
         voice_id=VOICE_ID,
         text=script,
-        model_id="eleven_monolingual_v1",
+        model_id="eleven_turbo_v2_5",
     )
     audio_bytes = b"".join(audio_generator)
 
