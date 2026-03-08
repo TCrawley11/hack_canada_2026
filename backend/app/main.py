@@ -11,7 +11,7 @@ from .deterrent import trigger_deterrent, SCRIPTS
 from .incidents import log_incident, get_incidents
 from .threats import record_threat, get_threat_summary
 
-app = FastAPI(title="FarmGuardian")
+app = FastAPI(title="AI SCARECROW")
 
 app.add_middleware(
     CORSMiddleware,
