@@ -26,19 +26,18 @@ load_dotenv()
 # Constants
 # ---------------------------------------------------------------------------
 
-# COCO class IDs that are animals
-ANIMAL_CLASS_IDS = {14, 15, 16, 17, 18, 19, 20, 21, 22, 23}
-# 14=bird, 15=cat, 16=dog, 17=horse, 18=sheep, 19=cow,
-# 20=elephant, 21=bear, 22=zebra, 23=giraffe
+# COCO class IDs to flag for Gemini classification
+TARGET_CLASS_IDS = {0, 14, 15, 16, 21}
+# 0=person, 14=bird, 15=cat, 16=dog, 21=bear
 
-YOLO_CONF_THRESHOLD = 0.3   # low — Gemini does real classification
+YOLO_CONF_THRESHOLD = 0.25   # low — Gemini does real classification
 GEMINI_CONF_THRESHOLD = 0.6  # min confidence to trigger alert
 COOLDOWN_SECONDS = 15
 SAMPLE_EVERY_N_FRAMES = 15   # ~2 fps at 30 fps capture
 
 GEMINI_PROMPT = (
     "What animal is this? If it is a predatory or farm-threatening animal "
-    "(e.g., dog, coyote, wolf, fox, bear, hawk, eagle, raccoon, crow, rat, deer, wild boar), "
+    "(e.g., human, dog, coyote, wolf, fox, bear, hawk, eagle, raccoon, crow, rat, deer, wild boar), "
     'respond with JSON: {"species": "<name>", "threatening": true/false, "confidence": 0.0-1.0}. '
     'If you cannot identify it or it\'s not an animal, return {"threatening": false}.'
 )
@@ -70,7 +69,7 @@ def detect_animals(frame, model: YOLO) -> list:
             continue
         for box in boxes:
             cls_id = int(box.cls[0])
-            if cls_id not in ANIMAL_CLASS_IDS:
+            if cls_id not in TARGET_CLASS_IDS:
                 continue
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             # Clamp to frame bounds
