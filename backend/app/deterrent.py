@@ -88,6 +88,10 @@ cooldowns: dict[str, float] = {}
 cooldown_lock = threading.Lock()
 COOLDOWN_SECONDS = 10
 
+# Global audio playback tracking
+_audio_playing = False
+_audio_lock = threading.Lock()
+
 # Script decks: tracks which lines haven't been played yet per species.
 # Resets and reshuffles when all lines have been used.
 _decks: dict[str, list[str]] = {}
@@ -126,25 +130,44 @@ def _draw_script(species: str) -> str:
         return _decks[species].pop()
 
 def play_audio_background(audio_bytes: bytes) -> None:
-    pygame.mixer.init()
-    sound = pygame.mixer.Sound(io.BytesIO(audio_bytes))
-    sound.play()
-    pygame.time.wait(int(sound.get_length() * 1000))
+    global _audio_playing
+    with _audio_lock:
+        _audio_playing = True
+    try:
+        pygame.mixer.init()
+        sound = pygame.mixer.Sound(io.BytesIO(audio_bytes))
+        sound.play()
+        pygame.time.wait(int(sound.get_length() * 1000))
+    finally:
+        with _audio_lock:
+            _audio_playing = False
 
 def play_sound_file_background(path: str) -> None:
-    pygame.mixer.init()
-    pygame.mixer.music.load(path)
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        pygame.time.wait(100)
+    global _audio_playing
+    with _audio_lock:
+        _audio_playing = True
+    try:
+        pygame.mixer.init()
+        pygame.mixer.music.load(path)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.wait(100)
+    finally:
+        with _audio_lock:
+            _audio_playing = False
 
 def trigger_deterrent(species: str) -> str | None:
     """
     Randomly plays either a TTS script line or a predator sound effect.
     TTS lines cycle through all options before repeating (no-repeat deck).
-    Returns a description of what was played, or None if on cooldown.
+    Returns a description of what was played, or None if on cooldown or audio is playing.
     """
     species_key = species.lower()
+
+    # Block all detections while any audio is playing
+    with _audio_lock:
+        if _audio_playing:
+            return None
 
     if is_on_cooldown(species_key):
         return None
