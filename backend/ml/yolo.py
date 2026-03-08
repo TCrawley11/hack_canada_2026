@@ -15,10 +15,10 @@ from io import BytesIO
 import cv2
 from google import genai
 from google.genai import types
-import requests
 from dotenv import load_dotenv
 from PIL import Image
 from ultralytics import YOLO
+from websockets.sync.client import connect as ws_connect
 
 load_dotenv()
 
@@ -44,7 +44,7 @@ GEMINI_PROMPT = (
 )
 
 # may need to change in the future
-DEFAULT_API_URL = "http://localhost:8000/detection"
+DEFAULT_WS_URL = "ws://localhost:8000/ws/detection"
 
 
 # ---------------------------------------------------------------------------
@@ -147,12 +147,12 @@ def _update_cooldown(species: str, cooldowns: dict) -> None:
 # Core frame processor
 # ---------------------------------------------------------------------------
 
-def process_frame(frame, yolo: YOLO, gemini_client, api_url: str, cooldowns: dict) -> None:
+def process_frame(frame, yolo: YOLO, gemini_client, ws, cooldowns: dict) -> None:
     """
     Full pipeline for a single frame:
     1. YOLO animal detection
     2. Gemini classification on each crop
-    3. POST to backend if threatening and not on cooldown
+    3. Send to backend over WebSocket if threatening and not on cooldown
     """
     crops = detect_animals(frame, yolo)
     if not crops:
@@ -177,68 +177,77 @@ def process_frame(frame, yolo: YOLO, gemini_client, api_url: str, cooldowns: dic
             continue
 
         _update_cooldown(species, cooldowns)
-        _post_detection(species, confidence, result["timestamp"], api_url)
+        _send_detection(ws, species, confidence, result["timestamp"])
 
 
-def _post_detection(species: str, confidence: float, timestamp: str, api_url: str) -> None:
-    payload = {"species": species, "confidence": confidence, "timestamp": timestamp}
+def _send_detection(ws, species: str, confidence: float, timestamp: str) -> None:
+    payload = json.dumps({
+        "species": species,
+        "threatening": True,
+        "confidence": confidence,
+        "timestamp": timestamp,
+    })
     try:
-        resp = requests.post(api_url, json=payload, timeout=5)
-        print(f"[Backend] POST {api_url} → {resp.status_code} {resp.text}")
-    except requests.RequestException as exc:
-        print(f"[Backend] Failed to reach {api_url}: {exc}")
+        ws.send(payload)
+        response = ws.recv(timeout=30)
+        print(f"[Backend] {response}")
+    except Exception as exc:
+        print(f"[Backend] WebSocket error: {exc}")
 
 
 # ---------------------------------------------------------------------------
 # Entry points: image / video / webcam
 # ---------------------------------------------------------------------------
 
-def run_on_image(path: str, yolo: YOLO, gemini_client, api_url: str) -> None:
+def run_on_image(path: str, yolo: YOLO, gemini_client, ws_url: str) -> None:
     frame = cv2.imread(path)
     if frame is None:
         raise FileNotFoundError(f"Cannot read image: {path}")
     cooldowns: dict = {}
-    process_frame(frame, yolo, gemini_client, api_url, cooldowns)
+    with ws_connect(ws_url) as ws:
+        process_frame(frame, yolo, gemini_client, ws, cooldowns)
 
 
-def run_on_video(path: str, yolo: YOLO, gemini_client, api_url: str) -> None:
+def run_on_video(path: str, yolo: YOLO, gemini_client, ws_url: str) -> None:
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         raise FileNotFoundError(f"Cannot open video: {path}")
     cooldowns: dict = {}
     frame_idx = 0
-    try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if frame_idx % SAMPLE_EVERY_N_FRAMES == 0:
-                process_frame(frame, yolo, gemini_client, api_url, cooldowns)
-            frame_idx += 1
-    finally:
-        cap.release()
+    with ws_connect(ws_url) as ws:
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                if frame_idx % SAMPLE_EVERY_N_FRAMES == 0:
+                    process_frame(frame, yolo, gemini_client, ws, cooldowns)
+                frame_idx += 1
+        finally:
+            cap.release()
 
 
-def run_on_webcam(camera_index: int, yolo: YOLO, gemini_client, api_url: str) -> None:
+def run_on_webcam(camera_index: int, yolo: YOLO, gemini_client, ws_url: str) -> None:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open camera index {camera_index}")
     cooldowns: dict = {}
     frame_idx = 0
     print("[Webcam] Press Ctrl+C to stop.")
-    try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("[Webcam] Failed to grab frame.")
-                break
-            if frame_idx % SAMPLE_EVERY_N_FRAMES == 0:
-                process_frame(frame, yolo, gemini_client, api_url, cooldowns)
-            frame_idx += 1
-    except KeyboardInterrupt:
-        print("[Webcam] Stopped by user.")
-    finally:
-        cap.release()
+    with ws_connect(ws_url) as ws:
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    print("[Webcam] Failed to grab frame.")
+                    break
+                if frame_idx % SAMPLE_EVERY_N_FRAMES == 0:
+                    process_frame(frame, yolo, gemini_client, ws, cooldowns)
+                frame_idx += 1
+        except KeyboardInterrupt:
+            print("[Webcam] Stopped by user.")
+        finally:
+            cap.release()
 
 
 # ---------------------------------------------------------------------------
@@ -251,8 +260,8 @@ def main() -> None:
     group.add_argument("--input", metavar="FILE", help="Path to image or video file")
     group.add_argument("--camera", metavar="INDEX", type=int, default=None,
                        help="Webcam index (default 0 if --input not given)")
-    parser.add_argument("--api", default=DEFAULT_API_URL,
-                        help=f"Backend detection endpoint (default: {DEFAULT_API_URL})")
+    parser.add_argument("--api", default=DEFAULT_WS_URL,
+                        help=f"Backend WebSocket URL (default: {DEFAULT_WS_URL})")
     parser.add_argument("--confidence", type=float, default=GEMINI_CONF_THRESHOLD,
                         help=f"Gemini confidence threshold (default: {GEMINI_CONF_THRESHOLD})")
     args = parser.parse_args()
