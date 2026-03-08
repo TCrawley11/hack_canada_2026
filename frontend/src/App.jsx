@@ -5,11 +5,11 @@ import ScareControls from './components/ScareControls'
 import useWebSocket from './hooks/useWebSocket'
 import useMockEvents from './hooks/useMockEvents'
 
-const WS_URL = 'ws://localhost:8000/events'
+const WS_URL = 'ws://localhost:8000/ws/events'
 
 function App() {
   const [events, setEvents] = useState([])
-  const [mockMode, setMockMode] = useState(true)
+  const [mockMode, setMockMode] = useState(false)
 
   const handleEvent = useCallback((event) => {
     if (event.type === 'detection') {
@@ -17,7 +17,14 @@ function App() {
         ...event,
         id: Date.now() + Math.random(),
       }
-      setEvents((prev) => [newEvent, ...prev].slice(0, 50))
+      // Deduplicate based on timestamp + species + scare
+      setEvents((prev) => {
+        const isDuplicate = prev.some(
+          (e) => e.timestamp === event.timestamp && e.species === event.species && e.scare === event.scare
+        )
+        if (isDuplicate) return prev
+        return [newEvent, ...prev].slice(0, 50)
+      })
     }
   }, [])
 

@@ -15,7 +15,7 @@ SCRIPTS: dict[str, list[str]] = {
     "crow": [
         "Hey! Get out of here you filthy crow! Shoo! Away with you!",
         "CROWS! Get off this farm right now! You are not welcome here!",
-        "Go away crow! This is not your land! Leave immediately!",
+        "Fly back the way you came darn chopped crows!"
     ],
     "deer": [
         "Hey deer! Get out of the crops! Go back to the forest where you belong!",
@@ -30,7 +30,7 @@ SCRIPTS: dict[str, list[str]] = {
     "raccoon": [
         "Raccoon! Get your grubby paws off the crops! Scram!",
         "Hey you sneaky raccoon! Out! Out! Out! Get off this property!",
-        "Go away raccoon! This food is not for you! Get lost!",
+        "You built like thief boy with your robber ahh. Scram!",
     ],
     "goose": [
         "Goose! Get off the farm! Go find a pond somewhere else! Shoo!",
@@ -41,11 +41,21 @@ SCRIPTS: dict[str, list[str]] = {
     "coyote": [
         "Coyote! You mangy, flea-ridden waste of fur! Get off this farm before I make you into a hat!",
         "Hey scrawny! Yeah you, the one that looks like a wet dog had a baby with a trash can! SCRAM!",
-        "Get lost coyote! You couldn't catch a cold, let alone my chickens! Get out of here!",
-        "Oh look, it's the ugliest thing on four legs! Get your bony behind off my property RIGHT NOW!",
-        "Coyote! Your howling is pathetic and so are you! Nobody is impressed! LEAVE!",
+        "Oh hell nah, it's wily coyote! Get your bony behind off my property RIGHT NOW!",
         "You call yourself a predator?! You look like you lost a fight with a lawn mower! GET OUT!",
-        "Hey mangy! The roadrunner called, he said even HE doesn't want to be caught by something as embarrassing as you! GO AWAY!",
+        "Coyote!, Your howling is pathetic and so are you! Nobody is impressed! LEAVE!"
+    ],
+
+    "bear": [
+        "Get out of here winnie the pooh!",
+        "There ain't no honey for you here little bear. LEAVE!",
+        "Boy there ain't no salmon for you."
+    ],
+
+    "human": [
+        "Hey you! Yes, you! Get off this farm! This is private property! Go away!",
+        "Human! get the fuck out of here! I'm calling 911",
+        "Hey there foolish one, you are being recorded now. This is being sent to the POLICE!",
     ],
 }
 

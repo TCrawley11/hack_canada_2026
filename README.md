@@ -37,6 +37,49 @@ Our scarecrow is a smart farm sentinel that:
 - Detection log with timestamps and deterrent action
 - Manual scare soundboard
 
+## How to Run
+
+### Backend
+
+1. Create a `.env` file in the `backend/` directory with your API keys:
+   ```
+   GEMINI_API_KEY=key
+   ELEVENLABS_API_KEY=key
+   ```
+
+2. Navigate to the backend directory and sync dependencies:
+   ```bash
+   cd backend
+   uv sync
+   ```
+
+3. Start the FastAPI server:
+   ```bash
+   fastapi dev
+   ```
+
+4. In a new terminal, activate the virtual environment and run the ML detection:
+   ```bash
+   cd backend/ml
+   source venv/bin/activate
+   python yolo.py --camera 0  # or --camera 1 depending on your webcam
+   ```
+
+### Frontend
+
+1. Navigate to the frontend directory and install dependencies:
+   ```bash
+   cd frontend
+   pnpm install
+   ```
+
+2. Start the development server:
+   ```bash
+   pnpm run dev
+   ```
+
+3. Open your browser to the URL shown in the terminal (usually `http://localhost:5173`)
+
 ## Why Adaptive Scarecrows?
 
 Traditional scarecrows fail because animals quickly become accustomed to them.

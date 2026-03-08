@@ -266,6 +266,8 @@ def _run_yolo_and_gemini(frame, yolo: YOLO, gemini_client, ws) -> list[tuple]:
     if detections:
         print(f"[YOLO] {len(detections)} target(s) found")
     for (crop, cls_id, *_) in detections:
+        if cls_id not in COCO_NAMES:
+            continue
         threading.Thread(
             target=_gemini_worker,
             args=(crop, cls_id, gemini_client, ws),
