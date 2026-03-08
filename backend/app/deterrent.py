@@ -55,12 +55,33 @@ DEFAULT_SCRIPTS = [
     "Hey! Get out of here! This is private property! Scram!",
 ]
 
+# Resolve sounds directory relative to this file (backend/sounds/)
+_SOUNDS_DIR = os.path.join(os.path.dirname(__file__), "..", "sounds")
+
+def _sound(filename: str) -> str:
+    return os.path.normpath(os.path.join(_SOUNDS_DIR, filename))
+
+# Predator sound effects per species mapped to actual files in backend/sounds/
+PREDATOR_SOUNDS: dict[str, list[str]] = {
+    "crow":    [_sound("owl.mp3"), _sound("lion1.mp3")],
+    "deer":    [_sound("howling.mp3"), _sound("lion2.mp3")],
+    "rat":     [_sound("owl.mp3"), _sound("lion3.mp3")],
+    "raccoon": [_sound("howling.mp3"), _sound("lion1.mp3")],
+    "goose":   [_sound("lion2.mp3"), _sound("howling.mp3")],
+    "coyote":  [_sound("lion1.mp3"), _sound("lion2.mp3"), _sound("lion3.mp3")],
+    "human":   [_sound("hell_nah.mp3"), _sound("help_me.mp3")],
+}
+
 # Cooldown tracking: species -> last triggered timestamp
 cooldowns: dict[str, float] = {}
 cooldown_lock = threading.Lock()
 COOLDOWN_SECONDS = 10
 
-# Replace with your ElevenLabs voice ID
+# Script decks: tracks which lines haven't been played yet per species.
+# Resets and reshuffles when all lines have been used.
+_decks: dict[str, list[str]] = {}
+_deck_lock = threading.Lock()
+
 VOICE_ID = "rfHVfqlu6LXw4vLf7q4i"
 
 client: ElevenLabs | None = None
@@ -84,6 +105,14 @@ def set_cooldown(species: str) -> None:
     with cooldown_lock:
         cooldowns[species] = time.time()
 
+def _draw_script(species: str) -> str:
+    """Draw the next script line without repeating until all lines have been used."""
+    with _deck_lock:
+        if not _decks.get(species):
+            pool = SCRIPTS.get(species, DEFAULT_SCRIPTS).copy()
+            random.shuffle(pool)
+            _decks[species] = pool
+        return _decks[species].pop()
 
 def play_audio_background(audio_bytes: bytes) -> None:
     pygame.mixer.init()
@@ -91,12 +120,18 @@ def play_audio_background(audio_bytes: bytes) -> None:
     sound.play()
     pygame.time.wait(int(sound.get_length() * 1000))
 
+def play_sound_file_background(path: str) -> None:
+    pygame.mixer.init()
+    pygame.mixer.music.load(path)
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        pygame.time.wait(100)
 
 def trigger_deterrent(species: str) -> str | None:
     """
-    Generate and play a scare audio for the given species.
-    Returns the script used, or None if on cooldown.
-    Plays audio in a background thread so it doesn't block detection.
+    Randomly plays either a TTS script line or a predator sound effect.
+    TTS lines cycle through all options before repeating (no-repeat deck).
+    Returns a description of what was played, or None if on cooldown.
     """
     species_key = species.lower()
 
@@ -105,11 +140,19 @@ def trigger_deterrent(species: str) -> str | None:
 
     set_cooldown(species_key)
 
-    scripts = SCRIPTS.get(species_key, DEFAULT_SCRIPTS)
-    script = random.choice(scripts)
+    sound_files = [p for p in PREDATOR_SOUNDS.get(species_key, []) if os.path.exists(p)]
+    use_sound = bool(sound_files) and random.random() < 0.5
 
-    client = get_client()
-    audio_generator = client.text_to_speech.convert(
+    if use_sound:
+        path = random.choice(sound_files)
+        thread = threading.Thread(target=play_sound_file_background, args=(path,), daemon=True)
+        thread.start()
+        return f"[sound: {os.path.basename(path)}]"
+
+    script = _draw_script(species_key)
+    tts_client = get_client()
+    
+    audio_generator = tts_client.text_to_speech.convert(
         voice_id=VOICE_ID,
         text=script,
         model_id="eleven_turbo_v2_5",
