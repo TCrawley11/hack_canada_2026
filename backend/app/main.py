@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+import json
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,40 +11,52 @@ from .incidents import log_incident, get_incidents
 app = FastAPI(title="FarmGuardian")
 
 
-class DetectionEvent(BaseModel):
-    species: str
-    confidence: float | None = None
-
-
 @app.get("/")
 def read_root():
     return {"message": "FarmGuardian API is running"}
 
 
-@app.post("/detection")
-def handle_detection(event: DetectionEvent):
+@app.websocket("/ws/detection")
+async def ws_detection(websocket: WebSocket):
     """
-    Called by the ML model when a pest is detected.
-    Triggers ElevenLabs audio for the detected species if not on cooldown.
+    WebSocket endpoint for the ML model.
+    Receives continuous detection frames and triggers ElevenLabs deterrent when threatening.
     """
-    species = event.species.lower()
-    script = trigger_deterrent(species)
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            species = str(data.get("species", "")).lower()
+            threatening = bool(data.get("threatening", False))
 
-    if script is None:
-        return {
-            "triggered": False,
-            "reason": "cooldown active",
-            "species": species,
-        }
+            if not threatening:
+                await websocket.send_json({
+                    "triggered": False,
+                    "reason": "not threatening",
+                    "species": species,
+                })
+                continue
 
-    incident = log_incident(species=species, script=script)
-    return {
-        "triggered": True,
-        "species": species,
-        "script": script,
-        "confidence": event.confidence,
-        "timestamp": incident["timestamp"],
-    }
+            script = trigger_deterrent(species)
+
+            if script is None:
+                await websocket.send_json({
+                    "triggered": False,
+                    "reason": "cooldown active",
+                    "species": species,
+                })
+                continue
+
+            incident = log_incident(species=species, script=script)
+            await websocket.send_json({
+                "triggered": True,
+                "species": species,
+                "script": script,
+                "timestamp": incident["timestamp"],
+            })
+
+    except WebSocketDisconnect:
+        pass
 
 
 @app.get("/incidents")
