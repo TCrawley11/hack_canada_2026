@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #FFFFFF;
+  --dark_bg: #181A1D;
+  --dark: #000000;
+  --dark_90: rgba(0, 0, 0, 0.9);
+  --dark_80: rgba(0, 0, 0, 0.8);
+  --dark_70: rgba(0, 0, 0, 0.7);
+  --dark_60: rgba(0, 0, 0, 0.6);
+  --dark_50: rgba(0, 0, 0, 0.5);
+  --dark_40: rgba(0, 0, 0, 0.4);
+  --dark_30: rgba(0, 0, 0, 0.3);
+  --dark_20: rgba(0, 0, 0, 0.2);
+  --dark_10: rgba(0, 0, 0, 0.1);
+
+  --light_bg: #F9F9F9;
+  --light: #FFFFFF;
+  --light_contrast: #dbe0e6;
+  --light_90: rgba(220, 225, 231, 0.9);
+  --light_80: rgba(220, 225, 231, 0.8);
+  --light_70: rgba(220, 225, 231, 0.7);
+  --light_60: rgba(220, 225, 231, 0.6);
+  --light_50: rgba(220, 225, 231, 0.5);
+  --light_40: rgba(220, 225, 231, 0.4);
+  --light_30: rgba(220, 225, 231, 0.3);
+  --light_20: rgba(220, 225, 231, 0.2);
+  --light_10: rgba(220, 225, 231, 0.1);
+
+  --panel_bg: #171717;
+  --panel_bg_hover: #151515;
+  --panel_border: #252525;
+  --app_bg: #181A1D;
+
+  --status_safe: hsl(106deg 100% 71%);
+  --status_alert: hsl(360deg 100% 71%);
+  --accent_primary: hsl(202deg 100% 71%);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
