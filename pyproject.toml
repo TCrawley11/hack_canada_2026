@@ -4,4 +4,12 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "gradio>=6.9.0",
+    "pytorchwildlife>=1.2.4.2",
+    "roboflow>=1.2.16",
+    "setuptools>=60,<70",
+    "tensorboard>=2.20.0",
+    "torch==2.10.0",
+    "ultralytics>=8.4.21",
+]
