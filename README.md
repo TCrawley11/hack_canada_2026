@@ -41,18 +41,24 @@ Our scarecrow is a smart farm sentinel that:
 
 ### Backend
 
-1. Navigate to the backend directory and sync dependencies:
+1. Create a `.env` file in the `backend/` directory with your API keys:
+   ```
+   GEMINI_API_KEY=key
+   ELEVENLABS_API_KEY=key
+   ```
+
+2. Navigate to the backend directory and sync dependencies:
    ```bash
    cd backend
    uv sync
    ```
 
-2. Start the FastAPI server:
+3. Start the FastAPI server:
    ```bash
    fastapi dev
    ```
 
-3. In a new terminal, activate the virtual environment and run the ML detection:
+4. In a new terminal, activate the virtual environment and run the ML detection:
    ```bash
    cd backend/ml
    source venv/bin/activate
