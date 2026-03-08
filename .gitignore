@@ -1,2 +1,4 @@
 .env
-ml/inf_tests/
+backend/ml/inf_tests/
+__pycache__/
+*.pyc
