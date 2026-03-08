@@ -1,7 +1,9 @@
 """
 FarmGuardian – two-stage predator detection pipeline
-Stage 1: YOLOv8n  →  locate animals in frame (fast, CPU-friendly)
+Stage 1: YOLO11n  →  locate targets in frame (fast, CPU-friendly)
 Stage 2: Gemini Vision  →  classify ROI and decide if threatening
+
+MJPEG stream available at http://localhost:8001/stream
 """
 
 import argparse
@@ -9,7 +11,9 @@ import json
 import os
 import re
 import time
+import threading
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from io import BytesIO
 
 import cv2
@@ -26,24 +30,43 @@ load_dotenv()
 # Constants
 # ---------------------------------------------------------------------------
 
-# COCO class IDs to flag for Gemini classification
 TARGET_CLASS_IDS = {0, 14, 15, 16, 21}
 # 0=person, 14=bird, 15=cat, 16=dog, 21=bear
 
-YOLO_CONF_THRESHOLD = 0.25   # low — Gemini does real classification
-GEMINI_CONF_THRESHOLD = 0.6  # min confidence to trigger alert
+COCO_NAMES = {0: "person", 14: "bird", 15: "cat", 16: "dog", 21: "bear"}
+
+YOLO_CONF_THRESHOLD = 0.25
+GEMINI_CONF_THRESHOLD = 0.6
 COOLDOWN_SECONDS = 15
-SAMPLE_EVERY_N_FRAMES = 15   # ~2 fps at 30 fps capture
+SAMPLE_EVERY_N_FRAMES = 15   # run YOLO every N frames (~2 fps at 30 fps)
 
 GEMINI_PROMPT = (
-    "What animal is this? If it is a predatory or farm-threatening animal "
+    "What animal or person is this? If it is a predatory or farm-threatening animal or human "
     "(e.g., human, dog, coyote, wolf, fox, bear, hawk, eagle, raccoon, crow, rat, deer, wild boar), "
     'respond with JSON: {"species": "<name>", "threatening": true/false, "confidence": 0.0-1.0}. '
-    'If you cannot identify it or it\'s not an animal, return {"threatening": false}.'
+    'If you cannot identify it or it\'s not a target, return {"threatening": false}.'
 )
 
-# may need to change in the future
 DEFAULT_WS_URL = "ws://localhost:8000/ws/detection"
+DEFAULT_STREAM_PORT = 8001
+
+# Box colours
+COLOR_UNCLASSIFIED = (0, 255, 255)  # yellow  — YOLO only, Gemini pending
+COLOR_SAFE         = (0, 255, 0)    # green   — Gemini: not threatening
+COLOR_THREAT       = (0, 0, 255)    # red     — Gemini: threatening
+
+# ---------------------------------------------------------------------------
+# Shared state
+# ---------------------------------------------------------------------------
+
+_frame_lock = threading.Lock()
+_latest_annotated: bytes = b""
+
+_gemini_lock = threading.Lock()
+_gemini_results: dict[int, dict] = {}  # cls_id → last Gemini result
+
+_cooldown_lock = threading.Lock()
+_cooldowns: dict[str, float] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -51,59 +74,112 @@ DEFAULT_WS_URL = "ws://localhost:8000/ws/detection"
 # ---------------------------------------------------------------------------
 
 def load_yolo_model() -> YOLO:
-    """Load YOLOv8n (auto-downloaded on first run, ~6 MB)."""
     model = YOLO("yolo11n.pt")
     return model
 
 
-def detect_animals(frame, model: YOLO) -> list:
+def detect_targets(frame, model: YOLO) -> list[tuple]:
     """
-    Run YOLOv8n on *frame* (BGR ndarray) and return a list of cropped BGR
-    images, one per animal bounding box found above YOLO_CONF_THRESHOLD.
+    Run YOLO on *frame* and return a list of
+    (crop, cls_id, x1, y1, x2, y2, yolo_conf) for each target box.
     """
     results = model(frame, conf=YOLO_CONF_THRESHOLD, verbose=False)
-    crops = []
+    detections = []
+    h, w = frame.shape[:2]
     for result in results:
-        boxes = result.boxes
-        if boxes is None:
+        if result.boxes is None:
             continue
-        for box in boxes:
+        for box in result.boxes:
             cls_id = int(box.cls[0])
             if cls_id not in TARGET_CLASS_IDS:
                 continue
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            # Clamp to frame bounds
-            h, w = frame.shape[:2]
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w, x2), min(h, y2)
             crop = frame[y1:y2, x1:x2]
             if crop.size > 0:
-                crops.append(crop)
-    return crops
+                detections.append((crop, cls_id, x1, y1, x2, y2, float(box.conf[0])))
+    return detections
 
 
 # ---------------------------------------------------------------------------
-# Stage 2 – Gemini
+# Annotation
 # ---------------------------------------------------------------------------
 
-def _bgr_crop_to_pil(crop) -> Image.Image:
-    rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-    return Image.fromarray(rgb)
+def annotate_frame(frame, detections: list[tuple]) -> bytes:
+    """
+    Draw bounding boxes on *frame* using the best available label
+    (Gemini if ready, otherwise YOLO class name). Returns JPEG bytes.
+    """
+    out = frame.copy()
+    for (_, cls_id, x1, y1, x2, y2, yolo_conf) in detections:
+        with _gemini_lock:
+            gemini = _gemini_results.get(cls_id)
+
+        if gemini:
+            label = f"{gemini['species']} {gemini['confidence']:.0%}"
+            color = COLOR_THREAT if gemini["threatening"] else COLOR_SAFE
+        else:
+            label = f"{COCO_NAMES.get(cls_id, str(cls_id))} {yolo_conf:.0%}"
+            color = COLOR_UNCLASSIFIED
+
+        cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(out, label, (x1, max(y1 - 8, 0)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+
+    _, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    return buf.tobytes()
+
+
+# ---------------------------------------------------------------------------
+# MJPEG stream server
+# ---------------------------------------------------------------------------
+
+class _MJPEGHandler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass  # suppress per-request logs
+
+    def do_GET(self):
+        if self.path != "/stream":
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        try:
+            while True:
+                with _frame_lock:
+                    data = _latest_annotated
+                if data:
+                    self.wfile.write(
+                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + data + b"\r\n"
+                    )
+                time.sleep(1 / 30)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+def start_stream_server(port: int = DEFAULT_STREAM_PORT) -> None:
+    server = HTTPServer(("0.0.0.0", port), _MJPEGHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"[Stream] MJPEG feed at http://localhost:{port}/stream")
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 – Gemini (runs in background thread per detection)
+# ---------------------------------------------------------------------------
+
+def _bgr_to_pil(crop) -> Image.Image:
+    return Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
 
 
 def classify_with_gemini(crop, client) -> dict:
-    """
-    Send *crop* (BGR ndarray) to Gemini Vision.
-    Returns a dict with keys: species, threatening, confidence.
-    On error returns {"threatening": False}.
-    """
-    pil_image = _bgr_crop_to_pil(crop)
-
-    # Encode as JPEG in-memory
+    pil_image = _bgr_to_pil(crop)
     buf = BytesIO()
     pil_image.save(buf, format="JPEG", quality=85)
     buf.seek(0)
-
     try:
         response = client.models.generate_content(
             model="gemini-3.1-flash-lite-preview",
@@ -113,8 +189,6 @@ def classify_with_gemini(crop, client) -> dict:
             ],
         )
         text = response.text.strip()
-
-        # Extract JSON from the response (model may wrap it in markdown)
         json_match = re.search(r"\{.*\}", text, re.DOTALL)
         if json_match:
             data = json.loads(json_match.group())
@@ -125,59 +199,39 @@ def classify_with_gemini(crop, client) -> dict:
             }
     except Exception as exc:
         print(f"[Gemini] Error: {exc}")
-
     return {"threatening": False, "species": "unknown", "confidence": 0.0}
 
 
-# ---------------------------------------------------------------------------
-# Cooldown helpers
-# ---------------------------------------------------------------------------
+def _gemini_worker(crop, cls_id, gemini_client, ws) -> None:
+    """Background thread: classify crop, update label store, send alert if needed."""
+    result = classify_with_gemini(crop, gemini_client)
+    result["timestamp"] = datetime.now().strftime("%H:%M:%S")
 
-def _is_on_cooldown(species: str, cooldowns: dict) -> bool:
-    last = cooldowns.get(species, 0.0)
-    return (time.time() - last) < COOLDOWN_SECONDS
+    with _gemini_lock:
+        _gemini_results[cls_id] = result
 
+    species = result["species"]
+    threatening = result["threatening"]
+    confidence = result["confidence"]
 
-def _update_cooldown(species: str, cooldowns: dict) -> None:
-    cooldowns[species] = time.time()
+    print(f"[Gemini] species={species}  threatening={threatening}  confidence={confidence:.2f}")
 
-
-# ---------------------------------------------------------------------------
-# Core frame processor
-# ---------------------------------------------------------------------------
-
-def process_frame(frame, yolo: YOLO, gemini_client, ws, cooldowns: dict) -> None:
-    """
-    Full pipeline for a single frame:
-    1. YOLO animal detection
-    2. Gemini classification on each crop
-    3. Send to backend over WebSocket if threatening and not on cooldown
-    """
-    crops = detect_animals(frame, yolo)
-    if not crops:
+    if not threatening or confidence < GEMINI_CONF_THRESHOLD:
         return
 
-    print(f"[YOLO] {len(crops)} animal region(s) found — classifying with Gemini…")
+    with _cooldown_lock:
+        last = _cooldowns.get(species, 0.0)
+        if (time.time() - last) < COOLDOWN_SECONDS:
+            print(f"[Cooldown] Skipping {species}")
+            return
+        _cooldowns[species] = time.time()
 
-    for crop in crops:
-        result = classify_with_gemini(crop, gemini_client)
-        result["timestamp"] = datetime.now().strftime("%H:%M:%S")
-        species = result.get("species", "unknown")
-        threatening = result.get("threatening", False)
-        confidence = result.get("confidence", 0.0)
+    _send_detection(ws, species, confidence, result["timestamp"])
 
-        print(f"[Gemini] species={species}  threatening={threatening}  confidence={confidence:.2f}")
 
-        if not threatening or confidence < GEMINI_CONF_THRESHOLD:
-            continue
-
-        if _is_on_cooldown(species, cooldowns):
-            print(f"[Cooldown] Skipping {species} (cooldown active)")
-            continue
-
-        _update_cooldown(species, cooldowns)
-        _send_detection(ws, species, confidence, result["timestamp"])
-
+# ---------------------------------------------------------------------------
+# WebSocket send
+# ---------------------------------------------------------------------------
 
 def _send_detection(ws, species: str, confidence: float, timestamp: str) -> None:
     payload = json.dumps({
@@ -195,23 +249,53 @@ def _send_detection(ws, species: str, confidence: float, timestamp: str) -> None
 
 
 # ---------------------------------------------------------------------------
-# Entry points: image / video / webcam
+# Core loop helpers
+# ---------------------------------------------------------------------------
+
+def _push_frame(frame, detections: list[tuple]) -> None:
+    """Annotate frame and update the MJPEG buffer."""
+    jpeg = annotate_frame(frame, detections)
+    with _frame_lock:
+        global _latest_annotated
+        _latest_annotated = jpeg
+
+
+def _run_yolo_and_gemini(frame, yolo: YOLO, gemini_client, ws) -> list[tuple]:
+    """Run YOLO, kick off Gemini threads for each detection, return detections."""
+    detections = detect_targets(frame, yolo)
+    if detections:
+        print(f"[YOLO] {len(detections)} target(s) found")
+    for (crop, cls_id, *_) in detections:
+        threading.Thread(
+            target=_gemini_worker,
+            args=(crop, cls_id, gemini_client, ws),
+            daemon=True,
+        ).start()
+    return detections
+
+
+# ---------------------------------------------------------------------------
+# Entry points
 # ---------------------------------------------------------------------------
 
 def run_on_image(path: str, yolo: YOLO, gemini_client, ws_url: str) -> None:
     frame = cv2.imread(path)
     if frame is None:
         raise FileNotFoundError(f"Cannot read image: {path}")
-    cooldowns: dict = {}
     with ws_connect(ws_url) as ws:
-        process_frame(frame, yolo, gemini_client, ws, cooldowns)
+        detections = _run_yolo_and_gemini(frame, yolo, gemini_client, ws)
+        # For a still image wait for all Gemini threads to finish
+        time.sleep(5)
+        _push_frame(frame, detections)
 
 
-def run_on_video(path: str, yolo: YOLO, gemini_client, ws_url: str) -> None:
+def run_on_video(path: str, yolo: YOLO, gemini_client, ws_url: str,
+                 stream_port: int = DEFAULT_STREAM_PORT) -> None:
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         raise FileNotFoundError(f"Cannot open video: {path}")
-    cooldowns: dict = {}
+    start_stream_server(stream_port)
+    last_detections: list[tuple] = []
     frame_idx = 0
     with ws_connect(ws_url) as ws:
         try:
@@ -220,17 +304,20 @@ def run_on_video(path: str, yolo: YOLO, gemini_client, ws_url: str) -> None:
                 if not ret:
                     break
                 if frame_idx % SAMPLE_EVERY_N_FRAMES == 0:
-                    process_frame(frame, yolo, gemini_client, ws, cooldowns)
+                    last_detections = _run_yolo_and_gemini(frame, yolo, gemini_client, ws)
+                _push_frame(frame, last_detections)
                 frame_idx += 1
         finally:
             cap.release()
 
 
-def run_on_webcam(camera_index: int, yolo: YOLO, gemini_client, ws_url: str) -> None:
+def run_on_webcam(camera_index: int, yolo: YOLO, gemini_client, ws_url: str,
+                  stream_port: int = DEFAULT_STREAM_PORT) -> None:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open camera index {camera_index}")
-    cooldowns: dict = {}
+    start_stream_server(stream_port)
+    last_detections: list[tuple] = []
     frame_idx = 0
     print("[Webcam] Press Ctrl+C to stop.")
     with ws_connect(ws_url) as ws:
@@ -241,7 +328,8 @@ def run_on_webcam(camera_index: int, yolo: YOLO, gemini_client, ws_url: str) -> 
                     print("[Webcam] Failed to grab frame.")
                     break
                 if frame_idx % SAMPLE_EVERY_N_FRAMES == 0:
-                    process_frame(frame, yolo, gemini_client, ws, cooldowns)
+                    last_detections = _run_yolo_and_gemini(frame, yolo, gemini_client, ws)
+                _push_frame(frame, last_detections)
                 frame_idx += 1
         except KeyboardInterrupt:
             print("[Webcam] Stopped by user.")
@@ -261,6 +349,8 @@ def main() -> None:
                        help="Webcam index (default 0 if --input not given)")
     parser.add_argument("--api", default=DEFAULT_WS_URL,
                         help=f"Backend WebSocket URL (default: {DEFAULT_WS_URL})")
+    parser.add_argument("--stream-port", type=int, default=DEFAULT_STREAM_PORT,
+                        help=f"MJPEG stream port (default: {DEFAULT_STREAM_PORT})")
     parser.add_argument("--confidence", type=float, default=GEMINI_CONF_THRESHOLD,
                         help=f"Gemini confidence threshold (default: {GEMINI_CONF_THRESHOLD})")
     args = parser.parse_args()
@@ -276,15 +366,14 @@ def main() -> None:
     print("[Init] Ready.")
 
     if args.input:
-        # Auto-detect image vs video by extension
         ext = os.path.splitext(args.input)[1].lower()
         if ext in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"}:
             run_on_image(args.input, yolo, gemini_client, args.api)
         else:
-            run_on_video(args.input, yolo, gemini_client, args.api)
+            run_on_video(args.input, yolo, gemini_client, args.api, args.stream_port)
     else:
         cam_idx = args.camera if args.camera is not None else 0
-        run_on_webcam(cam_idx, yolo, gemini_client, args.api)
+        run_on_webcam(cam_idx, yolo, gemini_client, args.api, args.stream_port)
 
 
 if __name__ == "__main__":
