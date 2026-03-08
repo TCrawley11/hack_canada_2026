@@ -1,36 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import Iridescence from './Iridescence'
 
+const STREAM_URL = 'http://localhost:8001/stream'
+
 export default function VideoFeed() {
-  const videoRef = useRef(null)
-  const [error, setError] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: false
-        })
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          setIsLoading(false)
-        }
-      } catch (err) {
-        setError('Camera access denied or unavailable')
-        setIsLoading(false)
-      }
-    }
-    startCamera()
-
-    return () => {
-      if (videoRef.current?.srcObject) {
-        const tracks = videoRef.current.srcObject.getTracks()
-        tracks.forEach(track => track.stop())
-      }
-    }
-  }, [])
+  const [error, setError] = useState(false)
 
   return (
     <div 
@@ -48,7 +23,7 @@ export default function VideoFeed() {
           speed={0.2}
         />
       </div>
-      {isLoading && (
+      {isLoading && !error && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div 
             className="w-8 h-8 rounded-full animate-spin"
@@ -65,16 +40,19 @@ export default function VideoFeed() {
             <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--light_40)' }}>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
-            <p>{error}</p>
+            <p>Stream unavailable. Make sure the backend is running.</p>
           </div>
         </div>
       ) : (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
+        <img
+          src={STREAM_URL}
+          alt="Live Feed"
           className="relative w-full h-full object-contain z-10"
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setIsLoading(false)
+            setError(true)
+          }}
         />
       )}
       <div 

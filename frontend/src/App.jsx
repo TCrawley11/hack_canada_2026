@@ -9,7 +9,7 @@ const WS_URL = 'ws://localhost:8000/events'
 
 function App() {
   const [events, setEvents] = useState([])
-  const [mockMode, setMockMode] = useState(true)
+  const [mockMode, setMockMode] = useState(false)
 
   const handleEvent = useCallback((event) => {
     if (event.type === 'detection') {
