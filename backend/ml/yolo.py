@@ -9,6 +9,7 @@ import json
 import os
 import re
 import time
+from datetime import datetime
 from io import BytesIO
 
 import cv2
@@ -161,6 +162,7 @@ def process_frame(frame, yolo: YOLO, gemini_client, api_url: str, cooldowns: dic
 
     for crop in crops:
         result = classify_with_gemini(crop, gemini_client)
+        result["timestamp"] = datetime.now().strftime("%H:%M:%S")
         species = result.get("species", "unknown")
         threatening = result.get("threatening", False)
         confidence = result.get("confidence", 0.0)
@@ -175,11 +177,11 @@ def process_frame(frame, yolo: YOLO, gemini_client, api_url: str, cooldowns: dic
             continue
 
         _update_cooldown(species, cooldowns)
-        _post_detection(species, confidence, api_url)
+        _post_detection(species, confidence, result["timestamp"], api_url)
 
 
-def _post_detection(species: str, confidence: float, api_url: str) -> None:
-    payload = {"species": species, "confidence": confidence}
+def _post_detection(species: str, confidence: float, timestamp: str, api_url: str) -> None:
+    payload = {"species": species, "confidence": confidence, "timestamp": timestamp}
     try:
         resp = requests.post(api_url, json=payload, timeout=5)
         print(f"[Backend] POST {api_url} → {resp.status_code} {resp.text}")
