@@ -13,6 +13,7 @@ from io import BytesIO
 
 import cv2
 from google import genai
+from google.genai import types
 import requests
 from dotenv import load_dotenv
 from PIL import Image
@@ -36,7 +37,7 @@ SAMPLE_EVERY_N_FRAMES = 15   # ~2 fps at 30 fps capture
 
 GEMINI_PROMPT = (
     "What animal is this? If it is a predatory or farm-threatening animal "
-    "(e.g., coyote, wolf, fox, bear, hawk, eagle, raccoon, crow, rat, deer, wild boar), "
+    "(e.g., dog, coyote, wolf, fox, bear, hawk, eagle, raccoon, crow, rat, deer, wild boar), "
     'respond with JSON: {"species": "<name>", "threatening": true/false, "confidence": 0.0-1.0}. '
     'If you cannot identify it or it\'s not an animal, return {"threatening": false}.'
 )
@@ -106,7 +107,10 @@ def classify_with_gemini(crop, client) -> dict:
     try:
         response = client.models.generate_content(
             model="gemini-3.1-flash-lite-preview",
-            contents=[GEMINI_PROMPT, {"mime_type": "image/jpeg", "data": buf.read()}],
+            contents=[
+                GEMINI_PROMPT,
+                types.Part.from_bytes(data=buf.read(), mime_type="image/jpeg"),
+            ],
         )
         text = response.text.strip()
 
@@ -257,7 +261,7 @@ def main() -> None:
 
     gemini_client = genai.Client(api_key=api_key)
 
-    print("[Init] Loading YOLOv8n…")
+    print("[Init] Loading YOLO11n…")
     yolo = load_yolo_model()
     print("[Init] Ready.")
 
